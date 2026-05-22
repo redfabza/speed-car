@@ -1,0 +1,285 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+-- ลบ UI เก่าถ้ามีอยู่
+if CoreGui:FindFirstChild("WackShopSpeedUI") then CoreGui.WackShopSpeedUI:Destroy() end
+
+-- State
+local speedEnabled = false
+local speedConnection = nil
+local lastVehicle = nil
+local originalMaxSpeed = nil
+
+local themeColor = Color3.fromRGB(0, 120, 255)
+
+-- ScreenGui หลัก
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WackShopSpeedUI"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = CoreGui
+
+-- ==========================================
+--  หน้าต่างหลัก (ธีมน้ำเงิน-ดำ)
+-- ==========================================
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 180, 0, 275) -- ขยายความสูงเพิ่มเพื่อรองรับข้อความเตือน
+frame.AnchorPoint = Vector2.new(1, 0.5)
+frame.Position = UDim2.new(1, -20, 0.5, 0)
+frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+frame.BorderSizePixel = 0
+frame.ZIndex = 10
+frame.Parent = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+local frameStroke = Instance.new("UIStroke", frame)
+frameStroke.Thickness = 1.5
+frameStroke.Color = themeColor
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 38)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 10
+titleBar.Parent = frame
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -40, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "🏎️ WackShop Speed"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 14
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.TextColor3 = themeColor
+titleLabel.ZIndex = 10
+titleLabel.Parent = titleBar
+
+-- ปุ่มปิดสีแดง
+local closeBtn = Instance.new("ImageButton")
+closeBtn.Size = UDim2.fromOffset(24, 24)
+closeBtn.Position = UDim2.new(1, -32, 0, 7)
+closeBtn.BackgroundColor3 = Color3.fromRGB(240, 70, 70)
+closeBtn.Image = "rbxassetid://10747384394"
+closeBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.ZIndex = 11
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) end)
+closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(240, 70, 70) end)
+
+-- ==========================================
+--  ฟังก์ชันปรับความเร็วรถ & ช่องกรอกข้อมูล
+-- ==========================================
+
+local SpeedInput = Instance.new("TextBox")
+SpeedInput.Parent = frame
+SpeedInput.Position = UDim2.new(0, 12, 0, 52)
+SpeedInput.Size = UDim2.new(0, 155, 0, 32)
+SpeedInput.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+SpeedInput.Text = "150"
+SpeedInput.PlaceholderText = "Speed..."
+SpeedInput.TextColor3 = Color3.fromRGB(0, 255, 150)
+SpeedInput.TextSize = 14
+SpeedInput.Font = Enum.Font.GothamMedium
+SpeedInput.ZIndex = 10
+Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 6)
+local inputStroke = Instance.new("UIStroke", SpeedInput)
+inputStroke.Color = Color3.fromRGB(45, 45, 60)
+inputStroke.Thickness = 1
+
+-- ฟังก์ชันสำหรับคำนวณและอัปเดตสปีดแบบเรียลไทม์เมื่อกดปุ่มบวกลบ
+local function updateSpeedValue(amount)
+    local currentSpeed = tonumber(SpeedInput.Text) or 0
+    local newSpeed = math.max(0, currentSpeed + amount)
+    SpeedInput.Text = tostring(newSpeed)
+end
+
+-- ฟังก์ชันสร้างปุ่มลัดสำหรับเพิ่ม/ลดสปีด
+local function createAdjustBtn(text, xPos, yPos, width, amount)
+    local adjBtn = Instance.new("TextButton")
+    adjBtn.Size = UDim2.new(0, width, 0, 24)
+    adjBtn.Position = UDim2.new(0, xPos, 0, yPos)
+    adjBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    adjBtn.Font = Enum.Font.GothamBold
+    adjBtn.TextSize = 11
+    adjBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    adjBtn.Text = text
+    adjBtn.ZIndex = 10
+    adjBtn.Parent = frame
+    Instance.new("UICorner", adjBtn).CornerRadius = UDim.new(0, 4)
+    
+    local btnStroke = Instance.new("UIStroke", adjBtn)
+    btnStroke.Color = Color3.fromRGB(50, 50, 65)
+    btnStroke.Thickness = 1
+
+    adjBtn.MouseButton1Click:Connect(function()
+        updateSpeedValue(amount)
+    end)
+end
+
+-- สร้างปุ่มปรับระดับความเร็ว จัดเรียง 3 แถว
+createAdjustBtn("-10", 12, 92, 74, -10)
+createAdjustBtn("+10", 93, 92, 74, 10)
+
+createAdjustBtn("-100", 12, 122, 74, -100)
+createAdjustBtn("+100", 93, 122, 74, 100)
+
+createAdjustBtn("-1000", 12, 152, 74, -1000)
+createAdjustBtn("+1000", 93, 152, 74, 1000)
+
+-- ฟังก์ชันสร้างปุ่มเปิด/ปิดระบบหลัก
+local function createToggleBtn(labelText, yPos, defaultState, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 155, 0, 32)
+    btn.Position = UDim2.new(0, 12, 0, yPos)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 13
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.ZIndex = 10
+    btn.Parent = frame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    local state = defaultState
+    local function updateStyle()
+        btn.BackgroundColor3 = state and Color3.fromRGB(30, 160, 90) or Color3.fromRGB(160, 45, 45)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Text = labelText .. (state and "  ✅" or "  ❌")
+    end
+    updateStyle()
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        updateStyle()
+        callback(state)
+    end)
+end
+
+-- ลอจิกควบคุมความเร็วรถ
+local function stopSpeedHack()
+    if speedConnection then speedConnection:Disconnect() speedConnection = nil end
+    if lastVehicle and originalMaxSpeed then lastVehicle.MaxSpeed = originalMaxSpeed end
+    lastVehicle = nil originalMaxSpeed = nil
+end
+
+local function startSpeedHack()
+    stopSpeedHack()
+    speedConnection = RunService.Heartbeat:Connect(function()
+        local targetSpeed = tonumber(SpeedInput.Text) or 150
+        local character = LocalPlayer.Character
+        if not character then return end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.SeatPart and humanoid.SeatPart:IsA("VehicleSeat") then
+            local seat = humanoid.SeatPart
+            if lastVehicle ~= seat then lastVehicle = seat originalMaxSpeed = seat.MaxSpeed end
+            seat.MaxSpeed = targetSpeed
+            if seat.Throttle ~= 0 then
+                local yVelocity = seat.AssemblyLinearVelocity.Y
+                local direction = seat.CFrame.LookVector * (seat.Throttle * targetSpeed)
+                seat.AssemblyLinearVelocity = Vector3.new(direction.X, yVelocity, direction.Z)
+            end
+        end
+    end)
+end
+
+-- ปุ่มเปิด/ปิดระบบความเร็ว
+createToggleBtn("ปรับสปีดรถ", 184, false, function(s)
+    speedEnabled = s
+    if speedEnabled then startSpeedHack() else stopSpeedHack() end
+end)
+
+-- ⚠️ ข้อความคำเตือนตัวสีแดงด้านล่าง ⚠️
+local WarningText = Instance.new("TextLabel")
+WarningText.Parent = frame
+WarningText.Position = UDim2.new(0, 0, 0, 222)
+WarningText.Size = UDim2.new(1, 0, 0, 20)
+WarningText.BackgroundTransparency = 1
+WarningText.Text = "⚠️ ความเร็วเยอะจะเลี้ยวยาก"
+WarningText.TextColor3 = Color3.fromRGB(255, 50, 50) -- สีแดง
+WarningText.TextSize = 11
+WarningText.Font = Enum.Font.GothamBold
+WarningText.ZIndex = 10
+
+-- เครดิตท้ายเมนู
+local InfoText = Instance.new("TextLabel")
+InfoText.Parent = frame
+InfoText.Position = UDim2.new(0, 0, 0, 245)
+InfoText.Size = UDim2.new(1, 0, 0, 25)
+InfoText.BackgroundTransparency = 1
+InfoText.Text = "By WACK SHOP"
+InfoText.TextColor3 = Color3.fromRGB(100, 100, 100)
+InfoText.TextSize = 11
+InfoText.Font = Enum.Font.Gotham
+InfoText.ZIndex = 10
+
+-- ==========================================
+--  ปุ่ม W (Toggle Panel วงกลมน้ำเงิน)
+-- ==========================================
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 44, 0, 44)
+toggleBtn.AnchorPoint = Vector2.new(0, 0.5)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+toggleBtn.Text = "W"
+toggleBtn.TextSize = 18
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextColor3 = themeColor
+toggleBtn.AutoButtonColor = false
+toggleBtn.ZIndex = 20
+toggleBtn.Parent = screenGui
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+
+local tStroke = Instance.new("UIStroke", toggleBtn)
+tStroke.Thickness = 1.5
+tStroke.Color = themeColor
+
+-- Drag ปุ่ม W
+local dragBtn, startBtn, startPosBtn
+toggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragBtn = true startBtn = input.Position startPosBtn = toggleBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragBtn and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - startBtn
+        toggleBtn.Position = UDim2.new(startPosBtn.X.Scale, startPosBtn.X.Offset + delta.X, startPosBtn.Y.Scale, startPosBtn.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragBtn = false end
+end)
+
+toggleBtn.MouseButton1Click:Connect(function() frame.Visible = not frame.Visible end)
+
+-- Drag หน้าต่างหลัก
+local dragging, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true dragStart = input.Position startPos = frame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+
+-- ปิดโปรแกรมและคืนค่ารถ
+closeBtn.MouseButton1Click:Connect(function()
+    stopSpeedHack()
+    screenGui:Destroy()
+    print("⛔ WackShop Speed has been shut down.")
+end)
+
+print("✅ WackShop Speed UI Loaded! เพิ่มคำเตือนสีแดงเรียบร้อย")
